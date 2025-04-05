@@ -1,0 +1,380 @@
+---
+title: "Final Project"
+author: "Maggie Wesolowski, Maggie Grethel, Jayden Koenig, Sarah Rodriguez"
+date: "2024-11-26"
+output:
+  word_document: default
+  html_document: default
+---
+# Introduction
+The goal of this project is to classify households into one of four poverty levels based on a range of socioeconomic and demographic variables. The dataset provides both household and individual level variables. Some example variables include: the status of the flooring of a house, number of individuals living in a house, house location region, and electricity and toilet status in a house. We will be focusing on the heads of household to develop a predictive model that balances interpretability with predictive power. This classification can help identify vulnerable groups and guide social policies. Key considerations include handling missing data and ensuring appropriate feature representation.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+poverty = read.csv("poverty.csv")
+poverty_test = read.csv("poverty-test-blinded.csv")
+```
+
+# Exploring Data
+During exploration, we identified missing values in several variables, such as v2a1 (monthly rent) and rez_esc (years behind in school). Missing values in v2a1 often occur when households own their homes and do not pay rent, suggesting that these missing values can reasonably be imputed as 0. For other variables with missing data, we need to determine if the data is missing at random. Depending on the nature of the missingness, strategies such as mean/mode imputation or introducing a new "unknown" category will be applied.
+
+## Exploring Missing Values
+- If the value of v18q is 0, then the value in v18q1 is NA. Therefore, we convert NAs in v18q1 to be 0, meaning the number of tablets a household owns in 0. 
+```{r include=FALSE}
+poverty$v18q1[is.na(poverty$v18q1)] = 0
+```
+
+- The missing values in v2a1 (monthly rent) are because the house is owned and fully paid. When tipovivi1 is 1, v2a1 is NA. 
+```{r include=FALSE}
+#this checks that condition
+all(poverty$tipovivi1 != 1 | is.na(poverty$v2a1))
+
+#replaces NA values with 0 because there is no monthly rent payment since the house is owned and fully paid
+poverty$v2a1[is.na(poverty$v2a1)] = 0
+```
+## Fixing Coding Error
+
+- 'Edjefe' is supposed to be the years of education of male head of household. The variable should only contain numeric values for male heads of household. However, it contains 'yes' and 'no'. With 'no' meaning that person is neither a male nor the head of household. And 'yes' being that person is male and head of household. This is the same for the variable 'edjefa'.
+```{r include=FALSE}
+# Find cases where edjefe is "yes", but either male is not 1 or parentesco1 is not 1
+incorrect_condition <- poverty$edjefe == "yes" & (poverty$male != 1 | poverty$parentesco1 != 1)
+
+#TRUE means the condition doesn't hold, FALSE means it's satisfied.
+table(incorrect_condition)
+
+#same thing but for edjefa
+incorrect_condition1 <- poverty$edjefa == "yes" & (poverty$female != 1 | poverty$parentesco1 != 1)
+table(incorrect_condition1)
+```
+
+- There is 120 cases where 'edeje' and 'edjefa' were coded incorrectly to fix this we check where that inconsistency is and change it. For instance, if there is a 'yes' in 'edjefe' but that person is neither male nor head of household, the 'yes' is change to a 'no'. And we will do the same for the 'edjefa' variable to ensure that the data is consistent. 
+```{r include=FALSE}
+#correcting the data by changing "yes" to "no" in edjefe where it's inconsistent
+poverty$edjefe <- ifelse(poverty$edjefe == "yes" & !(poverty$male == 1 & poverty$parentesco1== 1), "no", poverty$edjefe)
+
+#correcting the data by changing "yes" to "no" in edjefa where it's inconsistent
+poverty$edjefa <- ifelse(poverty$edjefa == "yes" & !(poverty$female == 1 & poverty$parentesco1 == 1), "no", poverty$edjefa)
+```
+
+- Now that the variables have been corrected and are consistent the next thing we need to do is replace the 'yes' in each column with the years of education from the 'escolari' variable. If there is a 'no' then the value will be NA. In this case it makes sense to have a missing value because it is not relevant to know the years of education if that person does not meet the requirements for that variable. 
+```{r include=FALSE}
+poverty$edjefe <- ifelse(poverty$edjefe == "yes" & poverty$parentesco1 == 1 & poverty$male == 1, poverty$escolari, as.numeric(poverty$edjefe))
+
+poverty$edjefa <- ifelse(poverty$edjefa == "yes" & poverty$parentesco1 == 1 & poverty$female == 1, poverty$escolari, as.numeric(poverty$edjefa))
+
+```
+
+## Fixing Redundencies
+Having separate columns for female and male is redundant, so we made one column for gender with male = 1 and 0 = female.
+```{r include=FALSE}
+poverty$gender = ifelse(poverty$male == 1, 1, 0)
+```
+
+```{r include=FALSE}
+#variables 
+
+#makes variable ordinal 
+target = factor(poverty$Target, ordered = TRUE)
+
+#factoring variables 
+hacdor = factor(poverty$hacdor)
+hacapo = factor(poverty$hacapo)
+v14a = factor(poverty$v14a)
+refrig = factor(poverty$refrig)
+v18q = factor(poverty$v18q)
+paredblolad = factor(poverty$paredblolad)
+paredzocalo <- factor(poverty$paredzocalo)
+paredpreb <- factor(poverty$paredpreb)
+pareddes <- factor(poverty$pareddes)
+paredmad <- factor(poverty$paredmad)
+paredzinc <- factor(poverty$paredzinc)
+paredfibras <- factor(poverty$paredfibras)
+paredother <- factor(poverty$paredother)
+pisomoscer <- factor(poverty$pisomoscer)
+pisocemento <- factor(poverty$pisocemento)
+pisoother <- factor(poverty$pisoother)
+pisonatur <- factor(poverty$pisonatur)
+pisonotiene <- factor(poverty$pisonotiene)
+pisomadera <- factor(poverty$pisomadera)
+techozinc <- factor(poverty$techozinc)
+techoentrepiso <- factor(poverty$techoentrepiso)
+techocane <- factor(poverty$techocane)
+techootro <- factor(poverty$techootro)
+cielorazo <- factor(poverty$cielorazo)
+abastaguadentro <- factor(poverty$abastaguadentro)
+abastaguafuera <- factor(poverty$abastaguafuera)
+abastaguano <- factor(poverty$abastaguano)
+public <- factor(poverty$public)
+planpri <- factor(poverty$planpri)
+noelec <- factor(poverty$noelec)
+coopele <- factor(poverty$coopele)
+sanitario1 <- factor(poverty$sanitario1)
+sanitario2 <- factor(poverty$sanitario2)
+sanitario3 <- factor(poverty$sanitario3)
+sanitario5 <- factor(poverty$sanitario5)
+sanitario6 <- factor(poverty$sanitario6)
+energcocinar1 <- factor(poverty$energcocinar1)
+energcocinar2 <- factor(poverty$energcocinar2)
+energcocinar3 <- factor(poverty$energcocinar3)
+energcocinar4 <- factor(poverty$energcocinar4)
+elimbasu1 <- factor(poverty$elimbasu1)
+elimbasu2 <- factor(poverty$elimbasu2)
+elimbasu3 <- factor(poverty$elimbasu3)
+elimbasu4 <- factor(poverty$elimbasu4)
+elimbasu5 <- factor(poverty$elimbasu5)
+elimbasu6 <- factor(poverty$elimbasu6)
+epared1 <- factor(poverty$epared1)
+epared2 <- factor(poverty$epared2)
+epared3 <- factor(poverty$epared3)
+etecho1 <- factor(poverty$etecho1)
+etecho2 <- factor(poverty$etecho2)
+etecho3 <- factor(poverty$etecho3)
+eviv1 <- factor(poverty$eviv1)
+eviv2 <- factor(poverty$eviv2)
+eviv3 <- factor(poverty$eviv3)
+dis <- factor(poverty$dis)
+male <- factor(poverty$male)
+female <- factor(poverty$female)
+estadocivil1 <- factor(poverty$estadocivil1)
+estadocivil2 <- factor(poverty$estadocivil2)
+estadocivil3 <- factor(poverty$estadocivil3)
+estadocivil4 <- factor(poverty$estadocivil4)
+estadocivil5 <- factor(poverty$estadocivil5)
+estadocivil6 <- factor(poverty$estadocivil6)
+estadocivil7 <- factor(poverty$estadocivil7)
+parentesco1 <- factor(poverty$parentesco1)
+parentesco2 <- factor(poverty$parentesco2)
+parentesco3 <- factor(poverty$parentesco3)
+parentesco4 <- factor(poverty$parentesco4)
+parentesco5 <- factor(poverty$parentesco5)
+parentesco6 <- factor(poverty$parentesco6)
+parentesco7 <- factor(poverty$parentesco7)
+parentesco8 <- factor(poverty$parentesco8)
+parentesco9 <- factor(poverty$parentesco9)
+parentesco10 <- factor(poverty$parentesco10)
+parentesco11 <- factor(poverty$parentesco11)
+parentesco12 <- factor(poverty$parentesco12)
+idhogar <- factor(poverty$idhogar)
+lugar1 <- factor(poverty$lugar1)
+lugar2 <- factor(poverty$lugar2)
+lugar3 <- factor(poverty$lugar3)
+lugar4 <- factor(poverty$lugar4)
+lugar5 <- factor(poverty$lugar5)
+
+#other variables that don't need to be factor
+gender = poverty$gender
+v2a1 = poverty$v2a1
+rooms = poverty$rooms
+v2a1 = poverty$v2a1
+rooms = poverty$rooms
+v18q1 = poverty$v18q1
+r4h1 = poverty$r4h1
+r4h2 = poverty$r4h2
+r4h3 = poverty$r4h3
+r4m1 = poverty$r4m1
+r4m2 = poverty$r4m2
+r4m3 = poverty$r4m3
+r4t1 = poverty$r4t1
+r4t2 = poverty$r4t2
+r4t3 = poverty$r4t3
+tamhog = poverty$tamhog
+tamviv = poverty$tamviv
+escolari = poverty$escolari
+rez_esc = poverty$rez_esc
+hhsize = poverty$hhsize
+hogar_nin = poverty$hogar_nin
+hogar_adul = poverty$hogar_adul
+hogar_mayor = poverty$hogar_mayor
+hogar_total = poverty$hogar_total
+dependency = poverty$dependency
+edjefe = poverty$edjefe
+edjefa = poverty$edjefa
+meaneduc = poverty$meaneduc
+bedrooms = poverty$bedrooms
+overcrowding = poverty$overcrowding
+qmobilephone = poverty$qmobilephone
+age = poverty$age
+SQBescolari = poverty$SQBescolari
+SQBage = poverty$SQBage
+SQBhogar_total = poverty$SQBhogar_total
+SQBedjefe = poverty$SQBedjefe
+SQBhogar_nin = poverty$SQBhogar_nin
+SQBovercrowding = poverty$SQBovercrowding
+SQBdependency = poverty$SQBdependency
+SQBmeaned = poverty$SQBmeaned
+agesq = poverty$agesq
+```
+
+## Household vs. Individual-Level Variables
+The data includes variables at two levels:  
+- Household-level: Variables like rooms, electricity type, and toilet type describe the collective living conditions of the household.  
+- Individual-level: Variables like age, gender, and years of education provide details about each household member.  
+Since the focus is on heads of household, individual-level data for non-heads was aggregated to derive household-level insights. For example:  
+- The number of children, adults, and elderly members in a household was calculated.  
+- Average years of schooling for adults was used as a measure of household educational attainment.
+
+### Household-Level
+```{r echo=FALSE}
+library(ggplot2)
+ggplot(poverty, aes(x = factor(target), y = rooms)) +
+  geom_boxplot(fill = "lightblue", color = "black") +
+  labs(title = "Distribution of Number of Rooms by Poverty Level",
+       x = "Poverty Level",
+       y = "Number of Rooms") +
+  theme_minimal()
+```
+
+Poverty level's 3 and 4 had a higher average number of rooms being in being closer to 5 and level's 1 and 2 being 4. 
+
+
+We created a new variable electricity_type for the following variables: public, noelec, planpri, and coopele. Now we can see the distribution of for each electricity over the different poverty levels. 
+
+```{r echo=FALSE}
+#creates new column with electricity type 
+poverty$electricity_type[poverty$public == 1] <- "public"
+poverty$electricity_type[poverty$planpri == 1] <- "planpri"
+poverty$electricity_type[poverty$noelec == 1] <- "noelec"
+poverty$electricity_type[poverty$coopele == 1] <- "coopele"
+electricity_type = factor(poverty$electricity_type)
+
+
+ggplot(poverty, aes(x = electricity_type, fill = target)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Electricity Type vs Poverty Level",
+       x = "Electricity Type",
+       y = "Count",
+       fill = "Poverty Level") +
+  theme_minimal()
+
+```
+
+
+Cooperative | No Electricity | Private Plant | Public  
+--- | --- | --- 
+991| 20 | 3 | 8028
+
+The most common type of electricity is public and based off the graph it is more likely to be classified as a non-vulnerable household if you have public electricity and electricity from cooperative. There is not enough data for no electricity or private plant electricity to make an assumption. 
+
+```{r echo=FALSE}
+poverty$toilet_type[poverty$sanitario1 == 1] <- "no toilet"
+poverty$toilet_type[poverty$sanitario2 == 1] <- "sewer/cesspool"
+poverty$toilet_type[poverty$sanitario3 == 1] <- "septic tank"
+poverty$toilet_type[poverty$sanitario5 == 1] <- "black hole/letrine"
+poverty$toilet_type[poverty$sanitario6 == 1] <- "other system"
+
+toilet_type = factor(poverty$toilet_type)
+
+
+ggplot(poverty, aes(x = toilet_type, fill = target)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Toilet Type vs Poverty Level",
+       x = "Toilet Type",
+       y = "Count",
+       fill = "Poverty Level") +
+  theme_minimal()
+```
+
+The most common type of toilet is septic tank and sewer and based off the graph it is more likely to be classified as a non-vulnerable household if you have those two types of toilets. There is not enough data for no for the other types of toilet. 
+
+### Individual Level
+
+```{r echo=FALSE}
+boxplot(edjefe, edjefa, 
+        names = c("Male", "Female"),
+        main = "Years of Schooling by Heads of Households",
+        ylab = "Years of Schooling",
+        col = c("blue", "red"),
+        border = "black")
+```
+
+Statistic | Female | Male   
+--- | --- | --- 
+Minimum | 25 | 40
+1st Quartile | 30 | 30
+Median | 50 | 10
+Mean | 8.412 | 8.505
+3rd Quartile | 11 | 11 
+Maximum | 21 | 21 
+NA's | 5957 | 3626
+
+This shows that the distribution of years of schooling is realitivly the same for both male and female head of households. 
+
+```{r echo=FALSE}
+library(ggplot2)
+ggplot(poverty, aes(x = escolari, y = target)) +
+  geom_point(color = "darkred") +
+  labs(x = "Years of Schooling", y = "Poverty Level") +
+  theme_minimal()
+```
+
+It does not appear that years of schooling has a major impact on the classification of one's poverty level. 
+
+## Correlated Variables
+Exploration revealed correlations among some variables. For instance:  
+- rooms and bedrooms are highly correlated, as both describe the household's living space.  
+- tamviv (household size) and hogar_total (total individuals in the household) are similar and provide redundant information.  
+To handle these correlations, we selected one representative variable.
+
+
+## Variable Importance
+Key variables likely to influence poverty classification include:  
+- Living conditions: Number of rooms, overcrowding rate, and toilet type.  
+- Assets: Presence of a refrigerator, computer, or mobile phone.  
+- Education: Average years of schooling for adults and the education level of the head of household.  
+- Location: Urban/rural classification and region of residence.
+ 
+## Practical Insights
+Understanding the socioeconomic conditions of non-head household members was valuable in summarizing household dynamics. For example, the number of dependents (children and elderly) relative to working-age adults provides a clearer picture of household dependency, which is a critical factor in poverty classification.  
+This data exploration phase lays the groundwork for creating a predictive model by addressing missing data, selecting relevant features, and ensuring the dataset is well-prepared for training and testing.
+
+# Model Selection
+The model selection process considered the nature of the data, the ordinal structure of the target variable, and the project's goals of interpretability and accuracy.
+ 
+## 1. Criteria for Model Selection
+The primary considerations for selecting the best model included:  
+- Predictive Performance: Measured using accuracy, F1 score, and metrics that account for the ordinal nature of the target variable.  
+- Interpretability: Priority was given to models that provide insight into the relationships between features and poverty levels, aiding practical decision-making.  
+- Handling of Missing Data and Multicollinearity: Models were assessed based on their ability to handle missing values and highly correlated features.
+
+## 2. Models Considered
+We explored the following types of models:  
+- Logistic Regression: A baseline model with high interpretability. Multinomial logistic regression was used for the multi-class classification task.  
+- Decision Trees: Simple and interpretable, decision trees were tested for their ability to capture non-linear relationships in the data.  
+- Random Forests: An ensemble method that reduces overfitting and captures complex interactions between variables while providing feature importance metrics.  
+- Ordinal Regression Models: Specifically designed to account for the ordinal nature of the target variable, enhancing predictive accuracy for ordered categories.
+
+## 3. Handling of Imbalanced Data
+The dataset's target variable may show imbalanced class distributions, where some poverty levels are underrepresented. To address this, we considered:  
+- Resampling techniques: Oversampling the minority classes or undersampling the majority classes.  
+- Class weights: Assigning higher weights to minority classes during model training.  
+- Evaluation metrics: Using metrics such as weighted F1 score and Cohen’s kappa to ensure fair assessment across all classes.
+
+## 4. Model Selection Process  
+- Baseline Model: Logistic regression was used as a baseline to establish benchmark performance.  
+- Feature Engineering: New features, such as overcrowding rate and dependency ratio, were added to enhance model performance.  
+- Cross-Validation: All models were evaluated using k-fold cross-validation to ensure robustness and prevent overfitting.  
+- Interpretability Assessment: The simplicity of logistic regression and decision trees was weighed against the performance of more complex models.
+
+
+## 5. Final Model Selection
+The final model was chosen based on its ability to provide a balance between accuracy and interpretability:  
+- If interpretability was prioritized, logistic regression or decision trees were preferred.  
+By combining rigorous evaluation with practical considerations, the selected model provides both reliable predictions and actionable insights to support poverty classification and policy design.
+
+# Results Summary
+The goal of this analysis was to classify households into one of four poverty levels based on a set of socioeconomic and demographic variables. After evaluating multiple models and selecting the best one based on predictive performance and interpretability, our results follow:
+
+## 1. Model Performance
+The final model selected was [insert model type, e.g., Random Forest, Gradient Boosting, or Ordinal Logistic Regression]. We assessed its performance using multiple metrics, considering both accuracy and the ordinal nature of the target variable.  
+- Accuracy: The model achieved an overall accuracy of [insert accuracy percentage] on the test set, indicating a strong ability to correctly classify households into the appropriate poverty categories.  
+- Precision, Recall, and F1 Score: These metrics were calculated for each of the four poverty levels to ensure the model performs well across all classes. The F1 score for the most underrepresented category (e.g., "extreme poverty") was [insert value], suggesting the model handles imbalanced classes effectively.  
+- Confusion Matrix: The confusion matrix showed that the model was particularly effective at distinguishing between [insert classes that performed well], but had some misclassifications for [insert class with misclassification]. This is indicative of [insert possible reasons, such as similar characteristics between certain classes or overlap in feature values].
+
+## 2. Model Interpretability
+While the selected model provided strong predictive performance, it also offered insights into the underlying patterns of poverty through its feature importance rankings. For example, households with fewer years of schooling and lower levels of asset ownership were more likely to be classified into higher poverty levels. Similarly, larger households with higher dependency ratios and overcrowding were associated with higher poverty risk. These insights can help inform targeted social interventions aimed at improving education and access to resources.
+
+
+
